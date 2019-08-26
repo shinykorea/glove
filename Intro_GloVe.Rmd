@@ -1,0 +1,278 @@
+---
+title: "Introduction : GloVe"
+author: "강동훈"
+date: "7/20/2019"
+output:
+  rmarkdown::html_document:
+    theme: lumen
+---
+
+```{r}
+library(tidyverse)
+```
+
+# Intro
+
+> https://nlp.stanford.edu/pubs/glove.pdf
+
+J.Pennington et al., Glove : Global Vectors for Word Representation, 2014.
+* Word Representation 방법 중 하나
+
+## 이 논문을 선정한 이유?
+
+* 법인 등기부등본 영위업종 데이터를 이용하여 표준산업분류 모형 만들기
+* 사람의 개입을 좀 줄일 수 없을까? (년간 신규 법인 수 10만개 사)
+* 글로 되어있는 데이터를 이용하여 분류 문제를 해결해보자
+* 어떤 업종에 관한 설명인지 자동으로 태깅을 해보자
+* 유사한 업종은 어떤것이 있는지 알아보자
+
+* 버닝썬 법인 등기부 등본
+> https://monthly.chosun.com/client/mdaily/daily_view.asp?Idx=6514&Newsnumb=2019036514
+
+* 통계청 표준산업분류
+> https://kssc.kostat.go.kr:8443/ksscNew_web/kssc/ccc/forwardPage.do?gubun=001_1#
+
+
+**어떤 작업을 해야 하나?**
+
+# Word Representation
+* 문장 내 단어들을 계산 가능하도록 만드는 방법
+* Word Vector 구축 모델이 다양함
+* 한국어에 가장 적합한 Word Vector 모델은 무엇이 있을까?
+* Glove가 Word2Vec의 어떤 점을 개선하려고 했는가?
+
+## 논문저자 직강 (Stanford CS224n)
+> https://web.stanford.edu/class/cs224n/ 
+
+## Word Representation 분류
+
+* Discrete Representation
+    - Dictionary 기반 one-hot encoding
+    - 사람이 이해하기 쉽고 구축하기 쉬움
+    - 단어의 관계를 측정하기가 어려움(뉘앙스 등)
+    - 사람이 직접 다 구축해야 함
+    - 주관적인 판단이 개입될 수 있음
+    
+* Distributed Representation
+    - 단어의 출현 빈도를 기반으로 계산한 Word Vector
+    - 비지도 학습방법
+    - 새로운 단어가 나타나면 Corpus 만 제공하면 됨
+    - 다른 모델과 결합하여 추가적인 정보를 제공
+    - 성능 측정이 쉽지 않음
+
+![](assets/FIG_03.png)
+
+## Word Representation 소개
+
+### Word2Vec (Skip-gram)
+
+![](assets/FIG_04.png)
+
+* 문장에서 Center word 를 잡음
+* Window size 만큼 이동함
+* Center word 와 주변 단어가 주어지는 확률을 게산
+
+![](assets/FIG_05.png)
+
+* 단어가 출현하는 위치를 기반으로 학습
+* 주변단어가 등장하는 전체 경우의 수 대비 center word 가 나타났을 조건 하에 등장할 확률 (조건부 확률) 을 계산
+* 의미와 문법 등에 대한 정보를 잘 인식함
+
+* word2Vec은 전체 Corpus 로부터 한단어씩 학습
+    - 한번에 하나의 동시 등장만 업데이트 하는게 비효율적임
+    
+    
+### 통계정보를 활용 Word Vector 구축
+
+Full Document 기반
+
+* 단어-문서 동시 출현을 기반으로 matrix X 를 구축
+* document-term matrix 가 대표적
+* 일반적인 주제분류에 적합
+* Latent Semantic Analysis
+
+Window 기반
+
+* 각 단어의 위치로 단어-단어간 Co-Matrix 를 구축
+* 의미와 문법정보를 모두 캡처
+
+
+### Window based co-occurance Matrix
+
+![](assets/FIG_06.png)
+
+* matrix 가 너무 Sparse 함
+* SVD 를 이용해 sparse matrix를 dense matrix 로 만들어보자
+* SVD : Singular vector decomposition
+
+```{r}
+labels <- c("I","like","enjoy","deep","learning","NLP","flying",".")
+coMatrix <- c(0,2,1,0,0,0,0,0,
+              2,0,0,1,0,1,0,0,
+              1,0,0,0,0,0,1,0,
+              0,1,0,0,1,0,0,0,
+              0,0,0,1,0,0,0,1,
+              0,1,0,0,0,0,0,1,
+              0,0,1,0,0,0,0,1,
+              0,0,0,0,1,1,1,0) %>% 
+  matrix(nrow = 8,ncol = 8, byrow = TRUE)
+  singular_value <- svd(coMatrix, nu = 2, nv = 2) # 2차원으로 변환
+  
+  f1 <- singular_value$u[,1]
+  f2 <- singular_value$u[,2]
+  nm <- labels
+  
+  df <- tibble(f1, f2, nm)
+  
+  # 3/ custom geom_label like any other geom.
+ggplot(df, aes(x=f1, y=f2)) +
+  geom_point() + 
+  geom_label(label=nm, nudge_x = 0, nudge_y = 0)
+```
+
+
+
+```{r}
+
+```
+
+
+```{r}
+library(plotly)
+p1 <- plot_ly(z = coMatrix, type = "heatmap")
+p1
+```
+
+
+```{r}
+u <- singular_value$u 
+d <- diag(singular_value$d[1:2]) 
+v <- t(singular_value$v) %>% matrix(nrow = 2)
+
+coMatrix_hat <- (u %*% d %*% v) 
+
+p2 <- plot_ly(
+  x = labels,
+  y = labels,
+  z = coMatrix_hat, 
+  type = "heatmap"
+  )
+p2
+
+```
+
+### SVD의 문제점
+
+* 단어의 양이 늘어나면 늘어날 수록 계산량이 많음
+* 새로운 단어와 문서가 나타나면 새로 계산해야 함
+* 계산량을 줄이면 원본 값에서 멀어져 왜곡이 일어남
+* 자주 출몰하는 단어에 대한 고려가 필요함
+
+
+### Glove 
+
+* 통계정보를 활용해서 더 효율적으로 계산해보자
+* Count 기반의 Vector 를 범용적으로 사용 가능하도록 해보자
+
+#### Glove의 모형
+
+
+* Xij Co-Occurance Matrix 를 만듬
+* 조건부 확률을 이용하여 동시 등장할 확률을 계산
+* word space 공간 내 거리상 가까운 내적값을 승산비로 비교
+
+![](assets/FIG_07.png)
+
+##### 간단한(?) 수학
+
+* 벡터(vector)
+* 내적(inner product)
+* 선형공간(Linear Space)
+* 분배법칙
+* 승산비(Odds ratio)
+* 지수함수(exponential)
+
+#### Notation
+* 
+* 
+* 
+* 
+
+
+#### 목적함수(objective function) 유도하기
+
+![](assets/FIG_08.png)
+
+* i, j, k 단어를 이용하여 승산비를 구하자
+* i j의 vector space와 k의 vector space는 다른 공간임 (이유는 뒤에서 설명)
+
+![](assets/FIG_09.png)
+
+* word vector는 선형공간(linear space)임 
+* 두 벡터 차이가 크면 관계가 없는것, 적으면 관계가 큰 것
+
+
+![](assets/FIG_10.png)
+
+* 좌변은 vector이고 우변은 Scala 이기 때문에 내적시켜 scala로 변환
+
+![](assets/FIG_11.png)
+
+* 각각의 내적을 승산비 형태로 변환
+* 분자가 크면 i가 k와 가깝고, 분모가 크면 j가 k와 가까움
+
+![](assets/FIG_11_1.png)
+
+* 좌변의 선형공간 수식을 분배법칙을 이용하여 풀어줌
+* 선형공간이기 때문에 분배법칙 적용 가능
+
+
+![](assets/FIG_11_2.png)
+
+* i와 k는 바뀌어도 항상 성립 
+* X = X^t  (symmetric)
+* 둘 사이의 거리차 관계가 확률의 승산비 형태가 되어야 함
+
+![](assets/FIG_11_3.png)
+
+* 지수함수가 위의 세 조건을 만족!
+
+![](assets/FIG_12.png)
+
+*Pik 의 정의는 i단어가 나타날 경우 / ik 단어가 동시에 나타날 경우임
+
+![](assets/FIG_13.png)
+
+* 양변에 log를 씌워서 exp 함수를 제거하면, 곱셈이 뺄셈 형태로 변환
+
+
+![](assets/FIG_14.png)
+
+* i와 k는 바뀌어도 성립해야 하므로, Xi를 상수 처리해버림
+* log(Xi)를 상수(bias)처리
+
+
+![](assets/FIG_15.png)
+
+* 오차제곱합의 최소값을 만족하는 J(theta) 를 학습
+* 두 단어의 내적에 상수를 더하고, co-occurance matrix 를 빼준 값의 합이 최소가 되게 하는 wi, wj, bi, bj 를 찾음
+
+
+![](assets/FIG_16.png)
+
+* 특정 단어(너무 많이 나오는 단어)에 대한 한계를 씌움
+
+
+
+
+
+
+
+
+# 참고자료 
+
+https://nlp.stanford.edu/projects/glove/
+
+https://nlp.stanford.edu/pubs/glove.pdf
+
+https://towardsdatascience.com/understanding-feature-engineering-part-4-deep-learning-methods-for-text-data-96c44370bbfa
